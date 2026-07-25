@@ -1,0 +1,14 @@
+# secrets
+.env
+
+# app data — databases, metadata, caches
+config/*
+
+# except these text configs
+!config/dnsmasq/
+config/dnsmasq/*
+!config/dnsmasq/dnsmasq.conf
+!config/qbit-manage/
+config/qbit-manage/*
+!config/qbit-manage/config.yml
+*.save*
