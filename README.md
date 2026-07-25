@@ -584,12 +584,18 @@ episodes both download, clear the extras from Sonarr → Activity → Queue with
 The single-`/data`-mount and bind-mounted-config design means this is a copy,
 not a rebuild:
 
-1. Install Ubuntu + Docker on the new box (steps 1–3 above)
-2. `git clone` this repo to `/opt/media-stack`
-3. `./host/restore-config.sh <tarball>`
-4. Attach the media disk, mount at `/data` via fstab
-5. `sudo ./host/install.sh`
-6. Review and apply `host/netplan.yaml`
+1. Install Ubuntu + Docker on the new box (steps 1 and 3 above)
+2. **Attach the media disk and mount it at `/data` via fstab** (step 2 above)
+3. `git clone` this repo to `/opt/media-stack`
+4. `./host/restore-config.sh <tarball>` — extracts config and starts the stack
+5. `sudo ./host/install.sh` — backup script and systemd timer
+6. Review and apply `host/netplan.yaml`, then `sudo netplan try`
+
+**Order matters at step 2.** `restore-config.sh` ends by starting the stack, and
+`init-data` creates the `/data` tree on whatever `/data` currently is. If the
+real disk isn't mounted yet, that tree lands on the OS disk and is then hidden
+when the disk mounts over it — leaving an empty `/data` and wasted space you
+can't see. Storage before containers.
 
 Only the host-side path behind `/data` changes. Compose, app configs, quality
 profiles, watch history — all carry over untouched.
