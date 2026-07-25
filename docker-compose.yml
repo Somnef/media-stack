@@ -1,7 +1,24 @@
 services:
+  init-data:
+    image: alpine:latest
+    container_name: init-data
+    volumes:
+      - ${DATA}:/data
+    command: >
+      sh -c "
+      for d in movies tv anime music books; do
+        mkdir -p /data/torrents/$$d /data/media/$$d;
+      done &&
+      chown ${PUID}:${PGID} /data /data/torrents /data/media /data/torrents/* /data/media/* &&
+      echo 'data structure verified'
+      "
+    restart: "no"
   gluetun:
     image: qmcgaw/gluetun:latest
     container_name: gluetun
+    depends_on:
+      init-data:
+        condition: service_completed_successfully
     cap_add:
       - NET_ADMIN
     devices:
@@ -28,7 +45,6 @@ services:
     volumes:
       - ${CONFIG}/gluetun:/gluetun
     restart: unless-stopped
-
   qbittorrent:
     image: lscr.io/linuxserver/qbittorrent:latest
     container_name: qbittorrent
@@ -46,7 +62,6 @@ services:
       - ${CONFIG}/qbittorrent:/config
       - ${DATA}:/data
     restart: unless-stopped
-
   qbit-manage:
     image: ghcr.io/stuffanthings/qbit_manage:latest
     container_name: qbit-manage
@@ -66,7 +81,6 @@ services:
     volumes:
       - ${CONFIG}/qbit-manage:/config
     restart: on-failure:2
-
   prowlarr:
     image: lscr.io/linuxserver/prowlarr:latest
     container_name: prowlarr
@@ -81,7 +95,6 @@ services:
     volumes:
       - ${CONFIG}/prowlarr:/config
     restart: unless-stopped
-
   radarr:
     image: lscr.io/linuxserver/radarr:latest
     container_name: radarr
@@ -97,7 +110,6 @@ services:
       - ${CONFIG}/radarr:/config
       - ${DATA}:/data
     restart: unless-stopped
-
   sonarr:
     image: lscr.io/linuxserver/sonarr:latest
     container_name: sonarr
@@ -113,7 +125,6 @@ services:
       - ${CONFIG}/sonarr:/config
       - ${DATA}:/data
     restart: unless-stopped
-
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr:latest
     container_name: flaresolverr
@@ -125,7 +136,6 @@ services:
       - LOG_LEVEL=info
       - TZ=${TZ}
     restart: unless-stopped
-
   bazarr:
     image: lscr.io/linuxserver/bazarr:latest
     container_name: bazarr
@@ -141,11 +151,13 @@ services:
       - ${CONFIG}/bazarr:/config
       - ${DATA}:/data
     restart: unless-stopped
-
   plex:
     image: lscr.io/linuxserver/plex:latest
     container_name: plex
     network_mode: host
+    depends_on:
+      init-data:
+        condition: service_completed_successfully
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
@@ -155,10 +167,12 @@ services:
       - ${CONFIG}/plex:/config
       - ${DATA}/media:/data/media:ro
     restart: unless-stopped
-
   jellyfin:
     image: lscr.io/linuxserver/jellyfin:latest
     container_name: jellyfin
+    depends_on:
+      init-data:
+        condition: service_completed_successfully
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
@@ -169,7 +183,6 @@ services:
     ports:
       - 8096:8096
     restart: unless-stopped
-
   jellyseerr:
     image: fallenbagel/jellyseerr:latest
     container_name: jellyseerr
@@ -180,7 +193,6 @@ services:
     ports:
       - 5055:5055
     restart: unless-stopped
-
   lidarr:
     image: lscr.io/linuxserver/lidarr:latest
     container_name: lidarr
@@ -196,10 +208,12 @@ services:
       - ${CONFIG}/lidarr:/config
       - ${DATA}:/data
     restart: unless-stopped
-
   navidrome:
     image: deluan/navidrome:latest
     container_name: navidrome
+    depends_on:
+      init-data:
+        condition: service_completed_successfully
     environment:
       - ND_SCANSCHEDULE=1h
       - ND_LOGLEVEL=info
@@ -211,7 +225,6 @@ services:
     ports:
       - 4533:4533
     restart: unless-stopped
-
   dnsmasq:
     image: jpillora/dnsmasq:latest
     container_name: dnsmasq
@@ -223,7 +236,6 @@ services:
     cap_add:
       - NET_ADMIN
     restart: unless-stopped
-
   npm:
     image: jc21/nginx-proxy-manager:latest
     container_name: npm
