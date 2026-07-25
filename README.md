@@ -603,3 +603,56 @@ profiles, watch history — all carry over untouched.
 Things needing attention on the new host: the interface name and UUID in the
 netplan/fstab templates, the router's DHCP reservation for the new MAC, and
 re-claiming the Plex server.
+
+---
+
+## Planned: moving /data to a physical disk (LVM)
+
+Replaces the media VHDX with a real disk, so the eventual mini-PC migration is
+a cable swap rather than a copy.
+
+1. Windows: `diskmgmt.msc` → right-click the disk's left panel → **Offline**
+2. Hyper-V (VM off): Settings → SCSI Controller → Hard Drive → **Physical hard disk**
+3. In the VM:
+
+```bash
+lsblk                                          # identify the disk, e.g. /dev/sdc
+sudo pvcreate /dev/sdc
+sudo vgcreate mediavg /dev/sdc
+sudo lvcreate -l 100%FREE -n medialv mediavg
+sudo mkfs.ext4 -L media /dev/mediavg/medialv
+
+sudo mkdir /mnt/new
+sudo mount /dev/mediavg/medialv /mnt/new
+cd /opt/media-stack && docker compose down
+sudo rsync -aHvP /data/ /mnt/new/               # -H is essential: preserves hardlinks
+
+sudo stat -c '%i %h %n' /mnt/new/torrents/tv/*/*.mkv /mnt/new/media/tv/*/*/*.mkv 2>/dev/null | head
+# matching inodes, link count 2
+
+sudo umount /mnt/new /data
+sudo blkid /dev/mediavg/medialv                 # new UUID
+sudo nano /etc/fstab                            # replace the old UUID
+sudo mount -a && df -h /data
+docker compose up -d
+```
+
+4. Once verified: detach the old media VHDX in Hyper-V and delete it. Update
+   `host/fstab.line` with the new UUID.
+
+**Adding a second disk later**, live, no downtime:
+
+```bash
+sudo pvcreate /dev/sdd
+sudo vgextend mediavg /dev/sdd
+sudo lvextend -l +100%FREE -r /dev/mediavg/medialv
+```
+
+LVM is what makes that possible — plain ext4 can't span disks, and hardlinks
+require `/data` to stay a single filesystem. The tradeoff: a linear VG means
+losing either disk loses the whole filesystem.
+
+**USB caveat:** Hyper-V physical-disk passthrough over USB is less reliable
+than SATA. Test step 2 before committing data. If it won't attach, fall back to
+a VHDX on the disk — everything still works, the mini-PC migration just becomes
+a `qemu-nbd` mount plus rsync instead of a cable swap.
