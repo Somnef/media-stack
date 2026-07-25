@@ -1,0 +1,6 @@
+[Unit]
+Description=Media stack config backup
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/backup-media-config.sh

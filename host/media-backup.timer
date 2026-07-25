@@ -1,0 +1,9 @@
+[Unit]
+Description=Weekly media stack config backup
+
+[Timer]
+OnCalendar=Fri *-*-* 22:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

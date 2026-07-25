@@ -1,15 +1,15 @@
 # media-stack
 
 Self-hosted media automation stack. This repo holds the **text config** —
-`docker-compose.yml`, dnsmasq, qbit_manage. Everything else (app databases,
-metadata, secrets) lives in the config tarball described in
-[Backups](#backups).
+`docker-compose.yml`, dnsmasq, qbit_manage, and the host-level scripts under
+`host/`. Everything else (app databases, metadata, secrets) lives in the config
+tarball described in [Backups](#backups).
 
 A full rebuild needs **three** things:
 
 | Piece | Where it lives |
 |---|---|
-| Compose + text config | this repo |
+| Compose, text config, host scripts | this repo |
 | App databases + `.env` | `media-config-YYYY-MM-DD.tar.gz` |
 | Media files | the `/data` disk |
 
@@ -62,6 +62,55 @@ separately — so Sonarr/Radarr can hardlink from torrents into the library
 instead of copying. That's what lets qbit_manage delete finished public
 torrents without touching the library.
 
+**The `init-data` service** runs before anything else and creates the `/data`
+tree if missing, then fixes ownership to `PUID:PGID`. It exists because Docker
+creates missing bind-mount sources as **root:root** — so on a fresh disk,
+whichever container started first would silently create `/data/media`
+unwritable by the *arr apps. The
+`depends_on: service_completed_successfully` on gluetun, jellyfin, plex and
+navidrome is what prevents that race. It's idempotent and does nothing when the
+structure is already correct.
+
+---
+
+## Repo layout
+
+```
+/opt/media-stack               ← this repo
+├── docker-compose.yml
+├── .env                       ← NOT in git; in the tarball
+├── .env.example
+├── host/                      ← host-level config, see below
+└── config/
+    ├── radarr/ sonarr/ lidarr/ prowlarr/ bazarr/    ← tarball only
+    ├── jellyfin/ plex/ navidrome/ jellyseerr/       ← tarball only
+    ├── qbittorrent/ gluetun/ npm/                   ← tarball only
+    ├── dnsmasq/dnsmasq.conf   ← in git
+    └── qbit-manage/config.yml ← in git
+```
+
+### `host/`
+
+Things that live outside `/opt/media-stack` on a running machine, kept here so
+they survive an OS disk failure — including the backup machinery itself, which
+would otherwise be lost exactly when it's needed.
+
+| File | Deploys to | Notes |
+|---|---|---|
+| `install.sh` | — | run with sudo on a fresh host; deploys the rest |
+| `backup-media-config.sh` | `/usr/local/bin/` | weekly config tarball |
+| `media-backup.service` | `/etc/systemd/system/` | oneshot unit |
+| `media-backup.timer` | `/etc/systemd/system/` | Fri 22:00, `Persistent=true` |
+| `restore-config.sh` | — | run manually to restore a tarball |
+| `netplan.yaml` | `/etc/netplan/00-installer-config.yaml` | **review first** — interface name and IP are machine-specific |
+| `fstab.line` | appended to `/etc/fstab` | **review first** — UUID is disk-specific |
+| `pull-media-config.ps1` | the Windows machine | scheduled task, not used on the VM |
+| `indexers.txt` | — | which Prowlarr indexers were configured, and what to avoid |
+
+`install.sh` deliberately does **not** apply netplan automatically. A wrong
+netplan locks you out of SSH, and the UUID in `fstab.line` belongs to the old
+disk.
+
 ---
 
 ## Storage layout
@@ -72,21 +121,9 @@ torrents without touching the library.
 │   ├── movies/  tv/  anime/  music/  books/
 └── media/
     ├── movies/  tv/  anime/  music/  books/
-
-/opt/media-stack               ← this repo
-├── docker-compose.yml
-├── .env                       ← NOT in git; in the tarball
-└── config/
-    ├── radarr/ sonarr/ lidarr/ prowlarr/ bazarr/
-    ├── jellyfin/ plex/ navidrome/ jellyseerr/
-    ├── qbittorrent/ gluetun/ npm/
-    ├── dnsmasq/dnsmasq.conf   ← in git
-    └── qbit-manage/config.yml ← in git
 ```
 
-Everything under `config/` except those two files is app state — SQLite
-databases, artwork caches, metadata. Binary and churny, so it goes in the
-tarball rather than git.
+Created automatically by `init-data`.
 
 ---
 
@@ -100,43 +137,11 @@ behind host NAT.
 
 Two disks: OS, and a separate one for `/data`.
 
-### 2. Static IP
+Set a **static MAC** in the hypervisor (Hyper-V: Settings → Network Adapter →
+Advanced Features) before anything else, so a router DHCP reservation can't be
+orphaned later.
 
-`/etc/netplan/00-installer-config.yaml` — IPv6 is disabled deliberately; on a
-Hyper-V wireless bridge it half-works, so apps try IPv6 first and wait for a
-timeout before falling back.
-
-```yaml
-network:
-  version: 2
-  ethernets:
-    eth0:
-      dhcp4: no
-      dhcp6: no
-      accept-ra: no
-      link-local: [ ]
-      addresses: [192.168.1.16/24]
-      routes:
-        - to: default
-          via: 192.168.1.1
-      nameservers:
-        addresses: [1.1.1.1, 9.9.9.9]
-```
-
-```bash
-sudo chmod 600 /etc/netplan/00-installer-config.yaml
-sudo netplan try
-```
-
-Also add a DHCP reservation on the router for the VM's MAC, so nothing else is
-ever offered that address. Set a **static MAC** in Hyper-V first (Settings →
-Network Adapter → Advanced Features), otherwise the reservation is orphaned if
-the VM is ever recreated.
-
-Do not point the VM's resolver at its own dnsmasq container — it starts after
-networking, so boot-time DNS would fail.
-
-### 3. The `/data` disk
+### 2. The `/data` disk
 
 ```bash
 sudo mkfs.ext4 -L media /dev/sdb
@@ -144,7 +149,9 @@ sudo blkid /dev/sdb          # note the UUID
 sudo mkdir /data
 ```
 
-`/etc/fstab` — `nofail` matters, so the VM still boots if the disk is missing:
+Add to `/etc/fstab`, substituting the new UUID (`host/fstab.line` has the old
+one as a template). `nofail` matters — the VM still boots if the disk is
+missing:
 
 ```
 UUID=<uuid>  /data  ext4  defaults,nofail  0  2
@@ -152,11 +159,12 @@ UUID=<uuid>  /data  ext4  defaults,nofail  0  2
 
 ```bash
 sudo mount -a
-sudo mkdir -p /data/{torrents,media}/{movies,tv,anime,music,books}
-sudo chown -R 1000:1000 /data
 ```
 
-### 4. Docker
+The directory tree and ownership are handled by `init-data` at first
+`docker compose up`.
+
+### 3. Docker
 
 From Docker's official repo — not snap, not `apt install docker.io`.
 
@@ -172,30 +180,69 @@ sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin d
 sudo usermod -aG docker $USER   # log out and back in
 ```
 
-### 5. Restore
+### 4. Clone and restore
 
 ```bash
 sudo mkdir -p /opt/media-stack
 sudo chown $USER:$USER /opt/media-stack
 git clone git@github.com:USER/media-stack.git /opt/media-stack
 cd /opt/media-stack
-tar xzf ~/media-config-YYYY-MM-DD.tar.gz    # restores config/ and .env
-docker compose up -d
+
+./host/restore-config.sh ~/media-config-YYYY-MM-DD.tar.gz
 ```
 
-If you have no tarball, copy `.env.example` to `.env`, fill it in, and
-configure each app by hand — see [First-time configuration](#first-time-configuration).
+`restore-config.sh` moves any existing `config/` aside, extracts the archive,
+fixes ownership, and brings the stack up.
 
-### 6. Verify
+If you have no tarball: copy `.env.example` to `.env`, fill it in,
+`docker compose up -d`, and configure each app by hand — see
+[First-time configuration](#first-time-configuration).
+
+### 5. Static IP
+
+Review `host/netplan.yaml`, correct the interface name (`ip -br a`) and gateway
+(`ip route | grep default`), then:
 
 ```bash
-docker compose ps                          # all up, gluetun healthy
-docker exec qbittorrent curl -s ifconfig.io   # VPN exit IP
-curl -s ifconfig.io                        # your real IP — must differ
+sudo cp host/netplan.yaml /etc/netplan/00-installer-config.yaml
+sudo chmod 600 /etc/netplan/00-installer-config.yaml
+sudo netplan try
 ```
 
-If those two match, the tunnel isn't working. Stop and fix before downloading
-anything.
+`netplan try` reverts after 120s if you lose the connection — safer than
+`apply` over SSH.
+
+IPv6 is disabled deliberately: on a Hyper-V wireless bridge it half-works, so
+apps try IPv6 first and wait for a timeout before falling back.
+
+Also add a DHCP reservation on the router for the VM's MAC. Belt and braces —
+netplan asserts the address, the reservation stops the router offering it to
+anything else.
+
+Do not point the VM's resolver at its own dnsmasq container; it starts after
+networking, so boot-time DNS would fail.
+
+### 6. Host services
+
+```bash
+sudo ./host/install.sh
+```
+
+Installs the backup script, enables the systemd timer, and appends the fstab
+line if absent. Then copy `host/pull-media-config.ps1` to the Windows machine
+and register the scheduled task — see [Backups](#backups).
+
+### 7. Verify
+
+```bash
+docker compose ps                             # all up, gluetun healthy
+docker logs init-data                         # "data structure verified"
+docker exec qbittorrent curl -s ifconfig.io   # VPN exit IP
+curl -s ifconfig.io                           # your real IP — must differ
+```
+
+If those last two match, the tunnel isn't working. Stop and fix before
+downloading anything.
 
 ---
 
@@ -248,7 +295,8 @@ to the stack.
 
 ## First-time configuration
 
-Only needed if rebuilding without a config tarball.
+Only needed if rebuilding without a config tarball. `host/indexers.txt` lists
+which indexers were in use.
 
 ### qBittorrent
 
@@ -357,6 +405,10 @@ Services → Radarr and Sonarr at `192.168.1.16:7878` / `:8989`.
   **Anime Root Folder: `/data/media/anime`**, so anime requests arrive with the
   right series type instead of defaulting to Standard.
 
+Season numbering for anime often disagrees between TMDB (Jellyseerr) and TVDB
+(Sonarr) — a request covering "season 1" in Jellyseerr may leave later Sonarr
+seasons unmonitored. Check monitoring in Sonarr after requesting anime.
+
 ### qbit_manage
 
 Seeds private trackers indefinitely; deletes public torrents once downloaded.
@@ -444,13 +496,23 @@ only creates failure modes.
 
 ## Backups
 
-**VM** — `/usr/local/bin/backup-media-config.sh`, run by
-`media-backup.timer` every Friday 22:00 with `Persistent=true`, so a missed run
-fires at next boot. It stops the stack (SQLite copied mid-write restores
-corrupt), tars `config/` and `.env`, restarts, and keeps 1 archive.
+**VM** — `backup-media-config.sh`, run by `media-backup.timer` every Friday
+22:00 with `Persistent=true`, so a missed run fires at next boot. It stops the
+stack (SQLite copied mid-write restores corrupt), tars `config/` and `.env`,
+restarts, and keeps 1 archive.
 
-**Windows** — a scheduled task each Saturday 10:00 pulls the archive, verifies
-byte size, deletes the remote copy, and keeps the last 2.
+**Windows** — a scheduled task each Saturday 10:00 runs
+`pull-media-config.ps1`: pulls the archive, verifies byte size, deletes the
+remote copy, keeps the last 2 locally. Registered with:
+
+```powershell
+$action  = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$env:USERPROFILE\Backups\pull-media-config.ps1`""
+$trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Saturday -At 10am
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopIfGoingOnBatteries -AllowStartIfOnBatteries
+Register-ScheduledTask -TaskName "Pull media-stack config backup" -Action $action -Trigger $trigger -Settings $settings
+```
+
+It needs a passwordless SSH key at `$env:USERPROFILE\.ssh\id_ed25519_plex`.
 
 The archive contains `.env`, so it holds your **WireGuard private key and
 qBittorrent password in plaintext**. Keep the backup folder on an encrypted
@@ -459,11 +521,27 @@ disk.
 Restore:
 
 ```bash
-cd /opt/media-stack
-docker compose down
-tar xzf media-config-YYYY-MM-DD.tar.gz
-docker compose up -d
+./host/restore-config.sh /path/to/media-config-YYYY-MM-DD.tar.gz
 ```
+
+### Database / disk mismatch
+
+The two halves can drift, and the consequences aren't symmetric:
+
+**Databases newer than `/data`** (restoring a tarball onto an empty disk) — the
+*arr apps believe they have a full library, find it missing, and **re-download
+everything monitored**. That's usually what you want on a genuine rebuild, but
+it's a lot of bandwidth at once and will hammer your indexers into rate limits.
+If the media exists elsewhere, copy it into `/data/media` *before* starting
+Sonarr/Radarr/Lidarr. Note that availability decays — old releases lose
+seeders, so a restore returns your configuration perfectly and your library
+approximately.
+
+**`/data` newer than the databases** — Jellyfin, Plex and Navidrome recover on
+their own, since they derive everything from the filesystem. The *arr apps
+won't: they don't adopt files they don't know about, and may re-download
+content already on disk. Fix with **Library Import** (Add New → Import
+Existing) before letting them search.
 
 ---
 
@@ -487,7 +565,10 @@ Set-VM -Name "VM Name" -AutomaticCheckpointsEnabled $false
 ```
 
 If a chain already exists, merge it with `Merge-VHD` — a merge needs free space
-roughly equal to the delta, so make room first.
+roughly equal to the delta, so make room first. After merging outside Hyper-V's
+awareness it may refuse disk changes with "a disk merging is pending"; detach
+and re-attach the disks with `Remove-VMHardDiskDrive` / `Add-VMHardDiskDrive`
+to clear the stale state. Detaching does not delete the files.
 
 **`docker compose up -d` won't apply a new image** if the container is already
 running and unchanged. Use `--force-recreate` after a `pull`.
@@ -503,14 +584,16 @@ episodes both download, clear the extras from Sonarr → Activity → Queue with
 The single-`/data`-mount and bind-mounted-config design means this is a copy,
 not a rebuild:
 
-1. Install Ubuntu + Docker on the new box (steps 1–4 above)
+1. Install Ubuntu + Docker on the new box (steps 1–3 above)
 2. `git clone` this repo to `/opt/media-stack`
-3. Extract the config tarball into it
+3. `./host/restore-config.sh <tarball>`
 4. Attach the media disk, mount at `/data` via fstab
-5. `docker compose up -d`
+5. `sudo ./host/install.sh`
+6. Review and apply `host/netplan.yaml`
 
 Only the host-side path behind `/data` changes. Compose, app configs, quality
 profiles, watch history — all carry over untouched.
 
-Things that need attention on the new host: the static IP (netplan), the
-router's DHCP reservation for the new MAC, and re-claiming the Plex server.
+Things needing attention on the new host: the interface name and UUID in the
+netplan/fstab templates, the router's DHCP reservation for the new MAC, and
+re-claiming the Plex server.

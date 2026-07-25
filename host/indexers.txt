@@ -1,0 +1,12 @@
+Knaben                         torrent   enabled=True
+Nyaa.si                        torrent   enabled=True
+RuTracker.org                  torrent   enabled=True
+The Pirate Bay                 torrent   enabled=True
+TR4KER                         torrent   enabled=True
+
+Notes:
+- 1337x: abandoned. DNS-blocked by French ISPs, IP-banned, and Cloudflare-walled
+  even through the VPN. Not worth retrying.
+- FlareSolverr at http://localhost:8191 is needed for Cloudflare-protected ones.
+- RuTracker (bt2.t-ru.org) is currently caught by qbit_manage's "other" rule and
+  treated as public. Move it to the private list if ratio there matters.
