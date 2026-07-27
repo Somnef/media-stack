@@ -409,6 +409,45 @@ Season numbering for anime often disagrees between TMDB (Jellyseerr) and TVDB
 (Sonarr) — a request covering "season 1" in Jellyseerr may leave later Sonarr
 seasons unmonitored. Check monitoring in Sonarr after requesting anime.
 
+### Maintainerr
+
+Rule-based library retention. Collections sync to Jellyfin as a "leaving soon"
+shelf, and items are deleted once they have sat there for **Take action after
+days**.
+
+Set the **Radarr/Sonarr action** to delete *and* unmonitor, and leave the
+Jellyfin action as none — the media mount is `:ro`, so a media-server delete
+fails, and deleting without unmonitoring means the *arr re-downloads within the
+hour.
+
+**`BEFORE` and `AFTER` are not symmetric with `custom_days`.** A value of 30
+resolves to:
+
+- `BEFORE 30` → 30 days in the **past** (item is older than that) — what you want
+- `AFTER 30` → 30 days in the **future** — never true for existing media
+
+So `AFTER` cannot express "within the last N days", and any condition using it
+silently matches nothing. Two-sided date windows are therefore impossible;
+overlapping collections between an aged-out rule and a low-space rule are the
+accepted trade-off (the shorter grace period fires first).
+
+Use **Test Media** on a single title to see the resolved comparison dates
+before trusting any rule — it prints `firstValue` and `secondValue`, which is
+how the above was found.
+
+Field-name traps:
+
+- `sw_` means show-scope, **not** Streamystats. Movies use
+  `Jellyfin.viewCount`; seasons and shows use `Jellyfin.sw_amountOfViews`.
+- `Sonarr.addDate` is show-scope only — use `Jellyfin.addDate` in season rules.
+- `unaired_episodes` is show/season scope; `unaired_episodes_season` is
+  episode scope.
+- Add `Sonarr - Is (part of) latest aired/airing season` = false to protect the
+  season you are currently watching.
+
+Rules are exported as YAML from the UI and kept in `maintainerr/` in this repo.
+`POST /api/rules/yaml/decode` is what the import uses, if you ever script it.
+
 ### qbit_manage
 
 Seeds private trackers indefinitely; deletes public torrents once downloaded.
@@ -603,56 +642,3 @@ profiles, watch history — all carry over untouched.
 Things needing attention on the new host: the interface name and UUID in the
 netplan/fstab templates, the router's DHCP reservation for the new MAC, and
 re-claiming the Plex server.
-
----
-
-## Planned: moving /data to a physical disk (LVM)
-
-Replaces the media VHDX with a real disk, so the eventual mini-PC migration is
-a cable swap rather than a copy.
-
-1. Windows: `diskmgmt.msc` → right-click the disk's left panel → **Offline**
-2. Hyper-V (VM off): Settings → SCSI Controller → Hard Drive → **Physical hard disk**
-3. In the VM:
-
-```bash
-lsblk                                          # identify the disk, e.g. /dev/sdc
-sudo pvcreate /dev/sdc
-sudo vgcreate mediavg /dev/sdc
-sudo lvcreate -l 100%FREE -n medialv mediavg
-sudo mkfs.ext4 -L media /dev/mediavg/medialv
-
-sudo mkdir /mnt/new
-sudo mount /dev/mediavg/medialv /mnt/new
-cd /opt/media-stack && docker compose down
-sudo rsync -aHvP /data/ /mnt/new/               # -H is essential: preserves hardlinks
-
-sudo stat -c '%i %h %n' /mnt/new/torrents/tv/*/*.mkv /mnt/new/media/tv/*/*/*.mkv 2>/dev/null | head
-# matching inodes, link count 2
-
-sudo umount /mnt/new /data
-sudo blkid /dev/mediavg/medialv                 # new UUID
-sudo nano /etc/fstab                            # replace the old UUID
-sudo mount -a && df -h /data
-docker compose up -d
-```
-
-4. Once verified: detach the old media VHDX in Hyper-V and delete it. Update
-   `host/fstab.line` with the new UUID.
-
-**Adding a second disk later**, live, no downtime:
-
-```bash
-sudo pvcreate /dev/sdd
-sudo vgextend mediavg /dev/sdd
-sudo lvextend -l +100%FREE -r /dev/mediavg/medialv
-```
-
-LVM is what makes that possible — plain ext4 can't span disks, and hardlinks
-require `/data` to stay a single filesystem. The tradeoff: a linear VG means
-losing either disk loses the whole filesystem.
-
-**USB caveat:** Hyper-V physical-disk passthrough over USB is less reliable
-than SATA. Test step 2 before committing data. If it won't attach, fall back to
-a VHDX on the disk — everything still works, the mini-PC migration just becomes
-a `qemu-nbd` mount plus rsync instead of a cable swap.
