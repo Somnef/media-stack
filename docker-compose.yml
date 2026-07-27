@@ -6,7 +6,7 @@ services:
       - ${DATA}:/data
     command: >
       sh -c "
-      for d in movies tv anime music books; do
+      for d in movies tv anime music books books/ebooks books/audiobooks; do
         mkdir -p /data/torrents/$$d /data/media/$$d;
       done &&
       chown ${PUID}:${PGID} /data /data/torrents /data/media /data/torrents/* /data/media/* &&
@@ -40,6 +40,8 @@ services:
       - 8989:8989          # sonarr
       - 6767:6767          # bazarr
       - 8686:8686          # lidarr
+      - 8789:8789          # chaptarr
+      - 11011:11011        # cleanuparr
       - ${VPN_PORT}:${VPN_PORT}
       - ${VPN_PORT}:${VPN_PORT}/udp
     volumes:
@@ -151,22 +153,6 @@ services:
       - ${CONFIG}/bazarr:/config
       - ${DATA}:/data
     restart: unless-stopped
-  plex:
-    image: lscr.io/linuxserver/plex:latest
-    container_name: plex
-    network_mode: host
-    depends_on:
-      init-data:
-        condition: service_completed_successfully
-    environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
-      - VERSION=docker
-    volumes:
-      - ${CONFIG}/plex:/config
-      - ${DATA}/media:/data/media:ro
-    restart: unless-stopped
   jellyfin:
     image: lscr.io/linuxserver/jellyfin:latest
     container_name: jellyfin
@@ -246,4 +232,48 @@ services:
       - 80:80
       - 443:443
       - 81:81
+    restart: unless-stopped
+
+  cleanuparr:
+    image: ghcr.io/cleanuparr/cleanuparr:latest
+    container_name: cleanuparr
+    network_mode: "service:gluetun"
+    depends_on:
+      gluetun:
+        condition: service_healthy
+    environment:
+      - PORT=11011
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${CONFIG}/cleanuparr:/config
+    restart: unless-stopped
+
+  maintainerr:
+    image: maintainerr/maintainerr:latest
+    container_name: maintainerr
+    user: "${PUID}:${PGID}"
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - ${CONFIG}/maintainerr:/opt/data
+    ports:
+      - 6246:6246
+    restart: unless-stopped
+
+  chaptarr:
+    image: robertlordhood/chaptarr:latest
+    container_name: chaptarr
+    network_mode: "service:gluetun"
+    depends_on:
+      gluetun:
+        condition: service_healthy
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${CONFIG}/chaptarr:/config
+      - ${DATA}:/data
     restart: unless-stopped
