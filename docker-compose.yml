@@ -48,7 +48,7 @@ services:
       - ${CONFIG}/gluetun:/gluetun
     restart: unless-stopped
   qbittorrent:
-    image: lscr.io/linuxserver/qbittorrent:latest
+    image: lscr.io/linuxserver/qbittorrent@sha256:b024436f8ca665d16d9a997d26fd27fdf867ee5566ba09f32764e7b2976d3e02  # 5.2.3_v2.0.13-ls469 pinned 2026-08-02
     container_name: qbittorrent
     network_mode: "service:gluetun"
     depends_on:
@@ -65,7 +65,7 @@ services:
       - ${DATA}:/data
     restart: unless-stopped
   qbit-manage:
-    image: ghcr.io/stuffanthings/qbit_manage:latest
+    image: ghcr.io/stuffanthings/qbit_manage@sha256:a89ac290e52763f41459f81b88ac94ac523b49c9b05bf15936597e4513554983  # 4.10.0 pinned 2026-08-02
     container_name: qbit-manage
     network_mode: "service:gluetun"
     depends_on:
@@ -82,9 +82,10 @@ services:
       - QBIT_PASS=${QBIT_PASS}
     volumes:
       - ${CONFIG}/qbit-manage:/config
+      - ${DATA}:/data
     restart: on-failure:2
   prowlarr:
-    image: lscr.io/linuxserver/prowlarr:latest
+    image: lscr.io/linuxserver/prowlarr@sha256:2f3d31307beba3ba2dd226d191f5f5c14ee3b4d8b49277c64683f5ed97083179  # 2.5.2.5491-ls155 pinned 2026-08-02
     container_name: prowlarr
     network_mode: "service:gluetun"
     depends_on:
@@ -98,7 +99,7 @@ services:
       - ${CONFIG}/prowlarr:/config
     restart: unless-stopped
   radarr:
-    image: lscr.io/linuxserver/radarr:latest
+    image: lscr.io/linuxserver/radarr@sha256:e35056574cdc695a9ee745aa1ecda9eab3842450bf4b7b8471b023790fa3861d  # 6.3.0.10514-ls312 pinned 2026-08-02
     container_name: radarr
     network_mode: "service:gluetun"
     depends_on:
@@ -113,7 +114,7 @@ services:
       - ${DATA}:/data
     restart: unless-stopped
   sonarr:
-    image: lscr.io/linuxserver/sonarr:latest
+    image: lscr.io/linuxserver/sonarr@sha256:24acea2956a0ccb11f103877d9f4f8576600fb34bff34820ed749c2256dab89f  # 4.0.19.2979-ls320 pinned 2026-08-02
     container_name: sonarr
     network_mode: "service:gluetun"
     depends_on:
@@ -128,7 +129,7 @@ services:
       - ${DATA}:/data
     restart: unless-stopped
   flaresolverr:
-    image: ghcr.io/flaresolverr/flaresolverr:latest
+    image: ghcr.io/flaresolverr/flaresolverr@sha256:139dfee1c6f89249c8d665d1333a42e8ec74ec0a86bc6bb1c8461e10d3a66a47  # v3.5.0 pinned 2026-08-02
     container_name: flaresolverr
     network_mode: "service:gluetun"
     depends_on:
@@ -139,7 +140,7 @@ services:
       - TZ=${TZ}
     restart: unless-stopped
   bazarr:
-    image: lscr.io/linuxserver/bazarr:latest
+    image: lscr.io/linuxserver/bazarr@sha256:ab401a0f361cfad328e444838b13d5b334b189d0f556fc91a3623eb581df36df  # v1.6.0-ls356 pinned 2026-08-02
     container_name: bazarr
     network_mode: "service:gluetun"
     depends_on:
@@ -154,7 +155,7 @@ services:
       - ${DATA}:/data
     restart: unless-stopped
   jellyfin:
-    image: lscr.io/linuxserver/jellyfin:latest
+    image: lscr.io/linuxserver/jellyfin@sha256:bb8d372e35d5c4a6cb61d830a06f5b5846528315b97cf5d38b80eea1e430efa7  # 10.11.11ubu2404-ls42 pinned 2026-08-02
     container_name: jellyfin
     depends_on:
       init-data:
@@ -170,7 +171,7 @@ services:
       - 8096:8096
     restart: unless-stopped
   jellyseerr:
-    image: fallenbagel/jellyseerr:latest
+    image: fallenbagel/jellyseerr@sha256:4538137bc5af902dece165f2bf73776d9cf4eafb6dd714670724af8f3eb77764  # ? pinned 2026-08-02
     container_name: jellyseerr
     environment:
       - TZ=${TZ}
@@ -180,7 +181,7 @@ services:
       - 5055:5055
     restart: unless-stopped
   lidarr:
-    image: lscr.io/linuxserver/lidarr:latest
+    image: lscr.io/linuxserver/lidarr@sha256:f60ee67694bc4a218efe0fb2dc0b0021d193ac5f15be2638d17ab4eeb6966946  # 3.1.0.4875-ls36 pinned 2026-08-02
     container_name: lidarr
     network_mode: "service:gluetun"
     depends_on:
@@ -195,7 +196,7 @@ services:
       - ${DATA}:/data
     restart: unless-stopped
   navidrome:
-    image: deluan/navidrome:latest
+    image: deluan/navidrome@sha256:9012939114fbb1bb641b81cf96dec5ded15f0aafefe8d47a511d7cb919658e40  # 0.63.2 pinned 2026-08-02
     container_name: navidrome
     depends_on:
       init-data:
@@ -212,7 +213,7 @@ services:
       - 4533:4533
     restart: unless-stopped
   dnsmasq:
-    image: jpillora/dnsmasq:latest
+    image: jpillora/dnsmasq@sha256:98b69ad825942089fb7c4b9153e3c5af0205eda3a103c691e30b1a13fd912830  # ? pinned 2026-08-02
     container_name: dnsmasq
     volumes:
       - ${CONFIG}/dnsmasq/dnsmasq.conf:/etc/dnsmasq.conf
@@ -223,7 +224,7 @@ services:
       - NET_ADMIN
     restart: unless-stopped
   npm:
-    image: jc21/nginx-proxy-manager:latest
+    image: jc21/nginx-proxy-manager@sha256:52b2c59994f3d36acfcf70a1626f29734df0ed8c71bacc0269f78b6f939858bb  # ? pinned 2026-08-02
     container_name: npm
     volumes:
       - ${CONFIG}/npm/data:/data
@@ -235,7 +236,7 @@ services:
     restart: unless-stopped
 
   cleanuparr:
-    image: ghcr.io/cleanuparr/cleanuparr:latest
+    image: ghcr.io/cleanuparr/cleanuparr@sha256:9f74fa60bbf84c82b86f69fbef75189dd3e38408f99fd9c1895736185c4620b9  # ? pinned 2026-08-02
     container_name: cleanuparr
     network_mode: "service:gluetun"
     depends_on:
@@ -251,7 +252,7 @@ services:
     restart: unless-stopped
 
   maintainerr:
-    image: maintainerr/maintainerr:latest
+    image: maintainerr/maintainerr@sha256:3b90aeff94fd0a6c3e2e827f19e9827bc7046b51af962cd0593ce74cc6d8996a  # ? pinned 2026-08-02
     container_name: maintainerr
     user: "${PUID}:${PGID}"
     environment:
@@ -263,7 +264,7 @@ services:
     restart: unless-stopped
 
   chaptarr:
-    image: robertlordhood/chaptarr:latest
+    image: robertlordhood/chaptarr@sha256:cd5813b16d2d00c5e6d439cc53876b5c7a24f0693bfc7111d61f5afacdc5b055  # ? pinned 2026-08-02
     container_name: chaptarr
     network_mode: "service:gluetun"
     depends_on:
@@ -276,4 +277,18 @@ services:
     volumes:
       - ${CONFIG}/chaptarr:/config
       - ${DATA}:/data
+    restart: unless-stopped
+
+  homepage:
+    image: ghcr.io/gethomepage/homepage@sha256:a0b71c8e757298d02560186bab9fbe3fc2d375c523a62cc1019177b37e48aa28  # v1.13.2 pinned 2026-08-02
+    container_name: homepage
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - HOMEPAGE_ALLOWED_HOSTS=streaming.home.arpa,192.168.1.16:3000
+    volumes:
+      - ${CONFIG}/homepage:/app/config
+    ports:
+      - 3000:3000
     restart: unless-stopped
