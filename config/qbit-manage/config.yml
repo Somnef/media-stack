@@ -6,8 +6,8 @@ commands:
   cat_update: false
   rem_unregistered: false
   tag_tracker_error: false
-  rem_orphaned: false
-  tag_nohardlinks: false
+  rem_orphaned: true
+  tag_nohardlinks: true
   skip_cleanup: false
   skip_qb_version_check: false
 
@@ -18,12 +18,13 @@ qbt:
 
 directory:
   root_dir: /data/torrents
+  orphaned_dir: /data/torrents/orphaned_data
 
   torrents_dir:
 tracker:
   tr4ker.net:
     tag: private
-  rutracker.net:
+  myanonamouse:
     tag: private
   other:
     tag: public
@@ -68,6 +69,13 @@ settings:
   rem_unregistered_ignore_list: []
   rem_unregistered_grace_minutes: 10
   rem_unregistered_max_torrents: 10
+
+nohardlinks:
+  radarr:
+  tv-sonarr:
+  anime-sonarr:
+  lidarr:
+
 recyclebin:
   enabled: false
   empty_after_x_days:
@@ -88,7 +96,7 @@ webhooks:
     share_limits:
     cleanup_dirs:
 orphaned:
-  empty_after_x_days:
+  empty_after_x_days: 14
   exclude_patterns:
   max_orphaned_files_to_delete: 50
-  min_file_age_minutes: 0
+  min_file_age_minutes: 60
